@@ -81,10 +81,8 @@ public class VehicleManager {
     }
 
     public Map<Integer, Long> getVehicleCountsByDirectionDegrees() {
-        return vehicles.stream()
-                .collect(Collectors.groupingBy(
-                        car -> Math.floorMod(Math.round(car.getDirectionDegrees()), 360),
-                        Collectors.counting()));
+        return vehicles.stream().collect(Collectors.groupingBy(
+            car -> Math.floorMod(Math.round(car.getDirectionDegrees()), 360), Collectors.counting()));
     }
 
     public boolean isCollidingWithCar(Car car1, Car car2) {
