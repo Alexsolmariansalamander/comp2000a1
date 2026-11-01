@@ -1,4 +1,6 @@
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import javax.swing.*;
 
 public class App {
@@ -108,6 +110,36 @@ public class App {
             panel.repaint();
         });
 
+        JToggleButton debrisButton = new JToggleButton("Place debris: Off");
+        debrisButton.addActionListener(e -> {
+            boolean placingDebris = debrisButton.isSelected();
+            debrisButton.setText(placingDebris ? "Place debris: On" : "Place debris: Off");
+            panel.setCursor(Cursor.getPredefinedCursor(
+                    placingDebris ? Cursor.CROSSHAIR_CURSOR : Cursor.DEFAULT_CURSOR));
+        });
+
+        panel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (debrisButton.isSelected()) {
+                    vehicleManager.addDebris(e.getX(), e.getY());
+                    panel.repaint();
+                }
+            }
+        });
+
+        JButton crashCarButton = new JButton("Spawn crash car");
+        crashCarButton.addActionListener(e -> {
+            vehicleManager.spawnRecklessCar();
+            panel.repaint();
+        });
+
+        JPanel controls = new JPanel(new GridLayout(0, 1, 0, 6));
+        controls.setOpaque(false);
+        controls.add(crashCarButton);
+        controls.add(pauseButton);
+        controls.add(debrisButton);
+
         GridBagConstraints gbc = new GridBagConstraints();
 
         gbc.weightx = 1.0;
@@ -115,6 +147,6 @@ public class App {
         gbc.anchor = GridBagConstraints.SOUTHWEST;
         gbc.insets = new Insets(10, 10, 10, 10);
 
-        panel.add(pauseButton, gbc);
+        panel.add(controls, gbc);
     }
 }

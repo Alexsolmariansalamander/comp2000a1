@@ -4,6 +4,7 @@
 
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -12,13 +13,17 @@ import java.util.stream.Collectors;
 
 public class VehicleManager {
     private List<Car> vehicles;
+    private List<Debris> debris;
     static private int lastCarSpawnTime = 0;
     static private final int CAR_SPAWN_INTERVAL_MS = 1500;
+    private static final double CRASHED_CAR_LIFETIME_SECONDS = 3.0;
+    private static final float RECKLESS_CAR_SPEED = 160f;
     private LightManager trafficLights;
 
     public VehicleManager(LightManager trafficLights) {
         this.trafficLights = trafficLights;
         vehicles = new ArrayList<>();
+        debris = new ArrayList<>();
         // Create cars
         Car new1_car = new Car(0, 340, 30f, 50f, 0f, Color.MAGENTA);
         Car new2_car = new Car(450, 0, 20f, 30f, (float) (Math.PI / 2), Color.MAGENTA);
@@ -33,11 +38,23 @@ public class VehicleManager {
     // Update the state of all vehicles in the manager, including moving them and spawning new cars at intervals.
     public void update(double deltaTime, float worldTimer) {
         // Move all vehicles
-        for (Vehicle car : vehicles) {
-            if (shouldStopFor2((Car) car) || tooCloseToCarAhead((Car) car)) {
-                ((Car) car).slowDown(deltaTime);
+        Iterator<Car> vehicleIterator = vehicles.iterator();
+        while (vehicleIterator.hasNext()) {
+            Car car = vehicleIterator.next();
+            if (car.hasCrashed()) {
+                car.updateCrashTime(deltaTime);
+                car.slowDown(deltaTime);
+                car.move(deltaTime);
+                if (car.getCrashTimeSeconds() >= CRASHED_CAR_LIFETIME_SECONDS && car.getSpeed() <= 0f) {
+                    vehicleIterator.remove();
+                }
+                continue;
+            } else if (car.isReckless()) {
+                updateRecklessCar(car);
+            } else if (shouldStopFor2(car) || tooCloseToCarAhead(car)) {
+                car.slowDown(deltaTime);
             } else {
-                ((Car) car).speedUp(deltaTime);
+                car.speedUp(deltaTime);
             }
             car.move(deltaTime);
         }
@@ -57,19 +74,48 @@ public class VehicleManager {
         }
         // Check for collisions between vehicles
         checkCollisions();
+        checkDebrisCollisions();
         
     }
 
 
     public void draw(Graphics g) {
+        for (Debris item : debris) {
+            item.draw(g);
+        }
         for (Car car : vehicles) {
             car.draw(g);
         }
     }
 
+    public void addDebris(float x, float y) {
+        debris.add(new Debris(x, y));
+    }
+
 
     public void addVehicle(Car vehicle) {
         vehicles.add(vehicle);
+    }
+
+    public void spawnRecklessCar() {
+        Random random = new Random();
+        Point spawnPoint = switch (random.nextInt(4)) {
+            case 0 -> new Point(20, random.nextInt(760) + 20);
+            case 1 -> new Point(random.nextInt(760) + 20, 20);
+            case 2 -> new Point(780, random.nextInt(760) + 20);
+            default -> new Point(random.nextInt(760) + 20, 780);
+        };
+        float centerDirection = (float) Math.atan2(400 - spawnPoint.y, 400 - spawnPoint.x);
+        float randomOffset = (random.nextFloat() * 2 - 1) * (float) (Math.PI / 3);
+        float direction = centerDirection + randomOffset;
+        Car recklessCar = new Car(spawnPoint.x, spawnPoint.y, 20f,
+                RECKLESS_CAR_SPEED, direction, Color.ORANGE);
+        recklessCar.setReckless();
+        vehicles.add(recklessCar);
+    }
+
+    private void updateRecklessCar(Car car) {
+        car.setSpeed(RECKLESS_CAR_SPEED);
     }
 
     public void removeVehicle(Car vehicle) {
@@ -95,11 +141,9 @@ public class VehicleManager {
 
     private void checkCollisions() {
         for (Car car1 : vehicles) {
-            boolean collisionDetected = false;
             for (Car car2 : vehicles) {
                 if (car1 != car2 && isCollidingWithCar(car1, car2)) {
                     handleCollision(car1, car2);
-                    collisionDetected = true;
                     break; // Exit the inner loop if a collision is detected
                 }
             }
@@ -110,47 +154,60 @@ public class VehicleManager {
     }
 
     private void handleCollision(Car car1, Car car2) {
-        // Stop both cars
-        float dx = car2.getPosition()[0] - car1.getPosition()[0];
-        float dy = car2.getPosition()[1] - car1.getPosition()[1];
-        float distance = (float) Math.sqrt(dx * dx + dy * dy);
-        if (distance == 0f) distance = 0.01f; // guard against exactly-overlapping centers
+        float dx = car2.getX() - car1.getX();
+        float dy = car2.getY() - car1.getY();
+        float distance = (float) Math.hypot(dx, dy);
+        if (distance == 0f) {
+            distance = 0.01f;
+        }
 
-        float nx = dx / distance; // unit vector pointing from a to b
-        float ny = dy / distance;
+        float normalX = dx / distance;
+        float normalY = dy / distance;
+        float relativeVelocityX = car1.getVelocityX() - car2.getVelocityX();
+        float relativeVelocityY = car1.getVelocityY() - car2.getVelocityY();
+        float velocityAlongNormal = relativeVelocityX * normalX + relativeVelocityY * normalY;
+        if (velocityAlongNormal < 0) {
+            car1.crash();
+            car2.crash();
+            return;
+        }
 
-        float relVx = car1.getVelocityX() - car2.getVelocityX();
-        float relVy = car1.getVelocityY() - car2.getVelocityY();
-        float velAlongNormal = relVx * nx + relVy * ny;
-
-        if (velAlongNormal < 0) return; // already separating, nothing to resolve
-
-        float restitution = 0.4f; // 1 = bounces apart fully, 0 = cars just stop against each other
-        float impulse = -(1 + restitution) * velAlongNormal
+        float restitution = 0.4f;
+        float impulse = -(1 + restitution) * velocityAlongNormal
                 / (1f / car1.getMass() + 1f / car2.getMass());
+        float impulseX = impulse * normalX;
+        float impulseY = impulse * normalY;
+        car1.setVelocity(car1.getVelocityX() + impulseX / car1.getMass(),
+                car1.getVelocityY() + impulseY / car1.getMass());
+        car2.setVelocity(car2.getVelocityX() - impulseX / car2.getMass(),
+                car2.getVelocityY() - impulseY / car2.getMass());
 
-        float impulseX = impulse * nx;
-        float impulseY = impulse * ny;
-
-        car1.setVelocity(car1.getVelocityX() + impulseX / car1.getMass(), car1.getVelocityY() + impulseY / car1.getMass());
-        car2.setVelocity(car2.getVelocityX() - impulseX / car2.getMass(), car2.getVelocityY() - impulseY / car2.getMass());
-
-        separateOverlap(car1, car2, nx, ny, distance);
+        separateOverlap(car1, car2, normalX, normalY, distance);
+        car1.crash();
+        car2.crash();
     }
 
-    private void separateOverlap(Car a, Car b, float nx, float ny, float distance) {
-        float overlap = (a.getRadius() + b.getRadius()) - distance;
-        if (overlap <= 0) return;
+    private void separateOverlap(Car car1, Car car2, float normalX, float normalY, float distance) {
+        float overlap = car1.getRadius() + car2.getRadius() - distance;
+        if (overlap <= 0) {
+            return;
+        }
+        car1.setPosition(car1.getX() - normalX * overlap / 1000,
+                car1.getY() - normalY * overlap / 1000);
+        car2.setPosition(car2.getX() + normalX * overlap / 1000,
+                car2.getY() + normalY * overlap / 1000);
+    }
 
-        //float totalMass = a.getMass() + b.getMass();
-        //float pushA = overlap * (b.getMass() / totalMass); // lighter side moves further
-        //float pushB = overlap * (a.getMass() / totalMass);
-
-        //a.setPosition(a.getPosition()[0] - nx * pushA, a.getPosition()[1] - ny * pushA);
-        //b.setPosition(b.getPosition()[0] + nx * pushB, b.getPosition()[1] + ny * pushB);
-
-        a.setPosition(a.getPosition()[0] - nx * overlap / 1000, a.getPosition()[1] - ny * overlap / 1000);
-        b.setPosition(b.getPosition()[0] + nx * overlap / 1000, b.getPosition()[1] + ny * overlap / 1000);
+    private void checkDebrisCollisions() {
+        for (Car car : vehicles) {
+            for (Debris item : debris) {
+                double distance = Math.hypot(car.getX() - item.getX(), car.getY() - item.getY());
+                if (distance < car.getRadius() + item.getRadius()) {
+                    car.crash();
+                    break;
+                }
+            }
+        }
     }
 
     
