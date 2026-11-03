@@ -10,6 +10,9 @@ public class Car extends Vehicle {
     private Color color;
     private float directionRadians;  // 0 = facing +x, increases counter-clockwise
     private final float acceleration; // accel and decel, pixels per second squared
+    private boolean crashed;
+    private double crashTimeSeconds;
+    private boolean reckless;
 
     public float getX() {
     return x;
@@ -87,6 +90,35 @@ public float getY() {
     
     public float getSpeed() {
         return speed;
+    }
+
+    public boolean hasCrashed() {
+        return crashed;
+    }
+
+    public void crash() {
+        if (!crashed) {
+            crashed = true;
+            crashTimeSeconds = 0;
+        }
+    }
+
+    public void updateCrashTime(double deltaSeconds) {
+        if (crashed) {
+            crashTimeSeconds += deltaSeconds;
+        }
+    }
+
+    public double getCrashTimeSeconds() {
+        return crashTimeSeconds;
+    }
+
+    public boolean isReckless() {
+        return reckless;
+    }
+
+    public void setReckless() {
+        reckless = true;
     }
 
     public void setSpeed(float speed) {
