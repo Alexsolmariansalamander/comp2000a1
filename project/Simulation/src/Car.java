@@ -12,7 +12,7 @@ public class Car extends Vehicle {
     private final float acceleration; // accel and decel, pixels per second squared
     private boolean crashed;
     private double crashTimeSeconds;
-    private boolean reckless;
+    private DrivingStrategy drivingStrategy = new NormalDrivingStrategy();
 
     public float getX() {
     return x;
@@ -113,12 +113,15 @@ public float getY() {
         return crashTimeSeconds;
     }
 
-    public boolean isReckless() {
-        return reckless;
+    public DrivingStrategy getDrivingStrategy() {
+        return drivingStrategy;
     }
 
-    public void setReckless() {
-        reckless = true;
+    public void setDrivingStrategy(DrivingStrategy drivingStrategy) {
+        if (drivingStrategy == null) {
+            throw new IllegalArgumentException("Driving strategy cannot be null.");
+        }
+        this.drivingStrategy = drivingStrategy;
     }
 
     public void setSpeed(float speed) {
