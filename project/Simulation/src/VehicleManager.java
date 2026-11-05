@@ -49,12 +49,8 @@ public class VehicleManager {
                     vehicleIterator.remove();
                 }
                 continue;
-            } else if (car.isReckless()) {
-                updateRecklessCar(car);
-            } else if (shouldStopFor2(car) || tooCloseToCarAhead(car)) {
-                car.slowDown(deltaTime);
             } else {
-                car.speedUp(deltaTime);
+                car.getDrivingStrategy().update(car, this, deltaTime);
             }
             car.move(deltaTime);
         }
@@ -110,12 +106,12 @@ public class VehicleManager {
         float direction = centerDirection + randomOffset;
         Car recklessCar = new Car(spawnPoint.x, spawnPoint.y, 20f,
                 RECKLESS_CAR_SPEED, direction, Color.ORANGE);
-        recklessCar.setReckless();
+        recklessCar.setDrivingStrategy(new RecklessDrivingStrategy(RECKLESS_CAR_SPEED));
         vehicles.add(recklessCar);
     }
 
-    private void updateRecklessCar(Car car) {
-        car.setSpeed(RECKLESS_CAR_SPEED);
+    public boolean shouldSlowDown(Car car) {
+        return shouldStopFor2(car) || tooCloseToCarAhead(car);
     }
 
     public void removeVehicle(Car vehicle) {
