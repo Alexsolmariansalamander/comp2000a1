@@ -195,18 +195,47 @@ public class VehicleManager {
     }
 
     private void checkDebrisCollisions() {
-        for (Car car : vehicles) {
-            for (Debris item : debris) {
-                double distance = Math.hypot(car.getX() - item.getX(), car.getY() - item.getY());
-                if (distance < car.getRadius() + item.getRadius()) {
-                    car.crash();
-                    break;
-                }
-            }
+        List<DebrisCollisionSnapshot> debrisSnapshot = debris.stream()
+                .map(item -> new DebrisCollisionSnapshot(item.getX(), item.getY(), item.getRadius()))
+                .collect(Collectors.toList());
+        List<CarCollisionSnapshot> carSnapshot = vehicles.stream()
+                .map(car -> new CarCollisionSnapshot(car, car.getX(), car.getY(), car.getRadius()))
+                .collect(Collectors.toList());
+
+        List<Car> carsToCrash = carSnapshot.parallelStream()
+                .filter(car -> debrisSnapshot.stream().anyMatch(item ->
+                        Math.hypot(car.x - item.x, car.y - item.y) < car.radius + item.radius))
+                .map(car -> car.car)
+                .collect(Collectors.toList());
+
+        carsToCrash.forEach(Car::crash);
+    }
+
+    private static final class CarCollisionSnapshot {
+        private final Car car;
+        private final float x;
+        private final float y;
+        private final float radius;
+
+        private CarCollisionSnapshot(Car car, float x, float y, float radius) {
+            this.car = car;
+            this.x = x;
+            this.y = y;
+            this.radius = radius;
         }
     }
 
-    
+    private static final class DebrisCollisionSnapshot {
+        private final float x;
+        private final float y;
+        private final float radius;
+
+        private DebrisCollisionSnapshot(float x, float y, float radius) {
+            this.x = x;
+            this.y = y;
+            this.radius = radius;
+        }
+    }
 
 
     public boolean shouldStopFor2(Car car) {
